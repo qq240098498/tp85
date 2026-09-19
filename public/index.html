@@ -65,8 +65,35 @@
           <button type="button" id="filter-apply">筛选</button>
           <button type="button" id="filter-reset" class="ghost">重置</button>
           <button type="button" id="dep-refresh" class="ghost">刷新</button>
+          <button type="button" id="dep-import" class="ghost">批量导入</button>
           <button type="button" id="dep-new">新建登记</button>
         </div>
+      </div>
+
+      <div class="import-box hidden" id="import-box">
+        <div class="import-head">
+          <h3>批量导入依赖登记</h3>
+          <button type="button" id="import-close" class="link">收起</button>
+        </div>
+        <p class="import-hint">
+          支持 CSV、制表符分隔或 JSON。第一行写表头，至少包含「项目名称、依赖名称、版本」三列；
+          可再带「许可、责任人、状态、备注」。也可以把别人整理好的内容直接粘到下面。
+          先预演看一遍结论，确认后才会写入。
+        </p>
+        <div class="import-source">
+          <label class="import-file">选择文件
+            <input type="file" id="import-file" accept=".csv,.tsv,.txt,.json">
+          </label>
+          <button type="button" id="import-sample" class="ghost">填入示例</button>
+          <span class="import-filename" id="import-filename"></span>
+        </div>
+        <textarea id="import-text" class="import-text" rows="7"
+          placeholder="项目名称,依赖名称,版本,许可,责任人,状态,备注&#10;订单服务,guava,32.1.0,Apache-2.0,陈晓,在用,通用工具库"></textarea>
+        <div class="form-actions">
+          <button type="button" id="import-preview">预演导入</button>
+          <button type="button" id="import-clear" class="ghost">清空内容</button>
+        </div>
+        <div class="import-result hidden" id="import-result"></div>
       </div>
       <div class="table-wrap">
         <table class="grid">

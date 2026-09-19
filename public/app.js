@@ -335,6 +335,228 @@ document.addEventListener('click', async (event) => {
   }
 });
 
+// ---- 批量导入 ------------------------------------------------------------
+// 文件与粘贴内容都在页面上先解析成一组对象，再交给后端按同一套口径预演，
+// 页面本身不做字段是否成立的判断，避免与服务端口径不一致
+const importState = {
+  items: [],
+  preview: null,
+};
+
+const SAMPLE_IMPORT = [
+  '项目名称,依赖名称,版本,许可,责任人,状态,备注',
+  '订单服务,guava,32.1.0,Apache-2.0,陈晓,在用,通用工具库',
+  '订单服务,spring-boot,2.7.18,Apache-2.0,陈晓,在用,已经登记过，预演会标出来',
+  '会员侧,new-dep,1.0.0,MIT,王凯,在用,项目名称没有登记过',
+  '会员中心,Bad_Name,1.0.0,MIT,王凯,在用,依赖名称写法不合规',
+  '会员中心,lodash,4.17, MIT,王凯,在用,版本不是三段数字',
+  '会员中心,axios,1.6.2,MIT,王凯,停用,状态取值不认识',
+  '支付网关,netty,4.1.100,Apache-2.0,李文,在用,批内重复',
+  '支付网关,netty,4.1.100,Apache-2.0,李文,待升,同一次导入里同项目同名',
+].join('\n');
+
+// 带引号的 CSV/TSV 解析：引号里可以出现分隔符、换行，两个双引号表示一个双引号
+function parseDelimited(text) {
+  const delimiter = text.includes('\t') ? '\t' : ',';
+  const rows = [];
+  let field = '';
+  let row = [];
+  let quoted = false;
+  const pushField = () => { row.push(field); field = ''; };
+  const pushRow = () => { rows.push(row); row = []; };
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { field += '"'; i += 1; } else quoted = false;
+      } else field += ch;
+    } else if (ch === '"') {
+      quoted = true;
+    } else if (ch === delimiter) {
+      pushField();
+    } else if (ch === '\n') {
+      pushField(); pushRow();
+    } else if (ch === '\r') {
+      if (text[i + 1] === '\n') i += 1;
+      pushField(); pushRow();
+    } else {
+      field += ch;
+    }
+  }
+  pushField();
+  if (row.length > 1 || row[0] !== '') pushRow();
+
+  const table = rows
+    .map((cells) => cells.map((cell) => cell.trim()))
+    .filter((cells) => cells.some((cell) => cell !== ''));
+  if (table.length < 2) {
+    throw new Error('第一行要写表头，从第二行起每条一行，至少要有项目名称、依赖名称、版本三列');
+  }
+  const headers = table[0];
+  return table.slice(1).map((cells) => {
+    const record = {};
+    headers.forEach((header, index) => {
+      if (header) record[header] = cells[index] || '';
+    });
+    return record;
+  });
+}
+
+// 粘贴/文件内容先按 JSON 试，解析不了再按带表头的分隔文本处理
+function parseImportText(text) {
+  const content = text.trim();
+  if (!content) throw new Error('请先选择文件或把清单内容粘进来');
+  if (content[0] === '[' || content[0] === '{') {
+    let parsed;
+    try {
+      parsed = JSON.parse(content);
+    } catch (err) {
+      throw new Error('内容以 [ 或 { 开头但不是合法 JSON，请检查格式');
+    }
+    const items = Array.isArray(parsed) ? parsed : (parsed.items || parsed.deps);
+    if (!Array.isArray(items) || !items.length) {
+      throw new Error('JSON 里没有读到条目数组，请传 [{ "项目名称": "...", "依赖名称": "...", "版本": "..." }] 这样的结构');
+    }
+    return items;
+  }
+  return parseDelimited(content);
+}
+
+function renderImportPreview(preview) {
+  const box = el('import-result');
+  const summary = `<div class="import-summary">
+      <span class="pill total">共 ${preview.total} 条</span>
+      <span class="pill ok">可导入 ${preview.importable} 条</span>
+      <span class="pill warn">与已有登记同名 ${preview.existing} 条</span>
+      <span class="pill bad">不成立 ${preview.invalid} 条</span>
+    </div>`;
+
+  const rows = preview.results.map((item) => {
+    const n = item.normalized;
+    let verdict;
+    if (!item.valid) verdict = '<span class="tag bad">不成立</span>';
+    else if (item.exists) verdict = '<span class="tag warn">已有同名</span>';
+    else verdict = '<span class="tag ok">可导入</span>';
+    const rowClass = !item.valid ? ' class="row-bad"' : (item.exists ? ' class="row-exists"' : '');
+    const notes = item.problems.length
+      ? item.problems.map((problem) => `<li>${escapeHtml(problem.message)}</li>`).join('')
+      : '<li>校验通过，可以导入</li>';
+    return `<tr${rowClass}>
+      <td class="mono">${item.line}</td>
+      <td>${escapeHtml(n.projectName) || '<span class="missing">未填</span>'}</td>
+      <td class="mono">${escapeHtml(n.name) || '<span class="missing">未填</span>'}</td>
+      <td class="mono">${escapeHtml(n.version) || '<span class="missing">未填</span>'}</td>
+      <td>${escapeHtml(n.status)}</td>
+      <td>${verdict}</td>
+      <td class="import-problems"><ul>${notes}</ul></td>
+    </tr>`;
+  }).join('');
+
+  box.innerHTML = `${summary}
+    <div class="table-wrap">
+      <table class="grid import-grid">
+        <thead><tr><th>#</th><th>项目</th><th>依赖名称</th><th>版本</th><th>状态</th><th>结论</th><th>说明</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div class="form-actions">
+      <button type="button" id="import-confirm"${preview.importable ? '' : ' disabled'}>确认导入 ${preview.importable} 条</button>
+      <button type="button" id="import-revise" class="ghost">返回修改</button>
+    </div>
+    <p class="import-tip">与已有登记同名的条目会自动跳过，不会覆盖现有登记；不成立的条目请改好后重新预演。</p>`;
+  box.classList.remove('hidden');
+}
+
+async function runImportPreview() {
+  clearNotice();
+  let items;
+  try {
+    items = parseImportText(el('import-text').value);
+  } catch (err) {
+    importState.items = [];
+    importState.preview = null;
+    el('import-result').classList.add('hidden');
+    notify(err.message, 'error');
+    return;
+  }
+  try {
+    const preview = await request('/api/deps/import-preview', {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    });
+    importState.items = items;
+    importState.preview = preview;
+    renderImportPreview(preview);
+    if (!preview.importable) notify('预演完成：没有可以导入的条目，请按下面的说明修改', 'error');
+    else notify(`预演完成：${preview.importable} 条可以导入，确认后才会写入`, 'ok');
+  } catch (err) {
+    notify(err.message, 'error');
+  }
+}
+
+async function confirmImport() {
+  if (!importState.items.length) return;
+  if (!window.confirm(`确认把预演通过的条目导入吗？与已有登记同名或不成立的条目会自动跳过。`)) return;
+  try {
+    const result = await request('/api/deps/import', {
+      method: 'POST',
+      body: JSON.stringify({ items: importState.items }),
+    });
+    el('import-result').classList.add('hidden');
+    el('import-box').classList.add('hidden');
+    el('import-text').value = '';
+    el('import-filename').textContent = '';
+    importState.items = [];
+    importState.preview = null;
+    notify(`导入完成：新增 ${result.imported} 条${result.skipped ? `，跳过 ${result.skipped} 条` : ''}`, 'ok');
+    await loadProjects();
+    await loadDeps();
+  } catch (err) {
+    notify(err.message, 'error');
+  }
+}
+
+el('dep-import').addEventListener('click', () => {
+  clearNotice();
+  el('import-box').classList.toggle('hidden');
+  if (!el('import-box').classList.contains('hidden')) el('import-text').focus();
+});
+el('import-close').addEventListener('click', () => {
+  el('import-box').classList.add('hidden');
+});
+el('import-file').addEventListener('change', (event) => {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    el('import-text').value = String(reader.result || '');
+    el('import-filename').textContent = `已读入文件：${file.name}`;
+    el('import-result').classList.add('hidden');
+  };
+  reader.onerror = () => notify(`读文件失败：${file.name}`, 'error');
+  reader.readAsText(file, 'utf8');
+});
+el('import-sample').addEventListener('click', () => {
+  el('import-text').value = SAMPLE_IMPORT;
+  el('import-filename').textContent = '';
+  el('import-result').classList.add('hidden');
+});
+el('import-clear').addEventListener('click', () => {
+  el('import-text').value = '';
+  el('import-file').value = '';
+  el('import-filename').textContent = '';
+  el('import-result').classList.add('hidden');
+  importState.items = [];
+  importState.preview = null;
+});
+el('import-preview').addEventListener('click', runImportPreview);
+// 预演结果整块是动态渲染的，确认与返回用事件委托接住
+document.addEventListener('click', (event) => {
+  const node = event.target.closest('button');
+  if (!node) return;
+  if (node.id === 'import-confirm' && !node.disabled) confirmImport();
+  if (node.id === 'import-revise') el('import-text').focus();
+});
 el('project-form').addEventListener('submit', submitProject);
 el('dep-form').addEventListener('submit', submitDep);
 el('dep-new').addEventListener('click', () => {

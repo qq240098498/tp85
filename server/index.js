@@ -60,6 +60,24 @@ app.post('/api/deps', (req, res) => {
   }
 });
 
+// 批量导入先预演：不落盘，只返回每条条目能不能导、问题出在哪
+app.post('/api/deps/import-preview', (req, res) => {
+  try {
+    res.json(api.previewImport(req.body));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// 确认导入：服务端按最新数据重新校验一遍，只写入仍成立且不与已有登记撞名的条目
+app.post('/api/deps/import', (req, res) => {
+  try {
+    res.status(201).json(api.commitImport(req.body));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
 app.get('/api/deps/:id', (req, res) => {
   try {
     res.json(api.getDep(req.params.id));
