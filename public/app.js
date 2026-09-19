@@ -203,6 +203,7 @@ function renderDeps() {
 }
 
 function openDepForm(dep) {
+  closeImportForm();
   state.editingId = dep ? dep.id : '';
   el('dep-form-title').textContent = dep ? `编辑登记：${dep.name}` : '新建登记';
   if (state.projects.length) {
@@ -222,6 +223,75 @@ function closeDepForm() {
   state.editingId = '';
   el('dep-form').classList.add('hidden');
   clearFieldMarks();
+}
+
+// 导入面板：内容一变，之前的预演结果就作废，必须重新预演才能确认导入
+function openImportForm() {
+  closeDepForm();
+  el('import-form').classList.remove('hidden');
+  el('import-text').focus();
+}
+
+function resetImportPreview() {
+  el('import-result').classList.add('hidden');
+  el('import-result').innerHTML = '';
+  el('import-confirm').disabled = true;
+}
+
+function closeImportForm() {
+  el('import-form').classList.add('hidden');
+  resetImportPreview();
+}
+
+function renderImportResult(result) {
+  const parts = [];
+  parts.push(`<p class="import-summary">共 ${result.total} 条：可导入 ${result.ready.length} 条，与已有登记同项目同名 ${result.conflicts.length} 条，不成立 ${result.invalid.length} 条</p>`);
+  if (result.invalid.length) {
+    parts.push(`<div class="import-group bad"><h4>不成立（导入时跳过）</h4><ul>${result.invalid.map((item) => `<li>第 ${item.index} 条「${escapeHtml(item.entry.project) || '？'} / ${escapeHtml(item.entry.name) || '？'}」：${item.errors.map((err) => escapeHtml(err.message)).join('；')}</li>`).join('')}</ul></div>`);
+  }
+  if (result.conflicts.length) {
+    parts.push(`<div class="import-group dup"><h4>与已有登记同项目同名（导入时跳过）</h4><ul>${result.conflicts.map((item) => `<li>第 ${item.index} 条「${escapeHtml(item.project)} / ${escapeHtml(item.name)}」：已登记 ${escapeHtml(item.existing.version)}（${escapeHtml(item.existing.status)}），清单里是 ${escapeHtml(item.version)}</li>`).join('')}</ul></div>`);
+  }
+  if (result.ready.length) {
+    parts.push(`<div class="import-group ok"><h4>可导入</h4><ul>${result.ready.map((item) => `<li>第 ${item.index} 条「${escapeHtml(item.project)} / ${escapeHtml(item.name)}」${escapeHtml(item.version)}</li>`).join('')}</ul></div>`);
+  }
+  const box = el('import-result');
+  box.innerHTML = parts.join('');
+  box.classList.remove('hidden');
+}
+
+async function submitImportPreview(event) {
+  event.preventDefault();
+  clearNotice();
+  try {
+    const result = await request('/api/deps/import/preview', {
+      method: 'POST',
+      body: JSON.stringify({ text: el('import-text').value }),
+    });
+    renderImportResult(result);
+    el('import-confirm').disabled = result.ready.length === 0;
+  } catch (err) {
+    resetImportPreview();
+    notify(err.message, 'error');
+  }
+}
+
+// 确认导入时把原文再发一遍，服务端会重新校验，只有预演通过的条目才会落盘
+async function confirmImport() {
+  clearNotice();
+  try {
+    const result = await request('/api/deps/import', {
+      method: 'POST',
+      body: JSON.stringify({ text: el('import-text').value }),
+    });
+    notify(`导入完成：共 ${result.total} 条，新增 ${result.imported} 条，跳过同项目同名 ${result.skipped} 条，不成立 ${result.failed} 条`, result.imported ? 'ok' : 'error');
+    el('import-text').value = '';
+    closeImportForm();
+    await loadProjects();
+    await loadDeps();
+  } catch (err) {
+    notify(err.message, 'error');
+  }
 }
 
 async function submitProject(event) {
@@ -346,6 +416,30 @@ el('dep-new').addEventListener('click', () => {
   openDepForm(null);
 });
 el('dep-cancel').addEventListener('click', closeDepForm);
+el('dep-import').addEventListener('click', () => {
+  clearNotice();
+  if (!state.projects.length) {
+    notify('请先登记一个项目，再导入依赖清单', 'error');
+    return;
+  }
+  openImportForm();
+});
+el('import-form').addEventListener('submit', submitImportPreview);
+el('import-pick').addEventListener('click', () => el('import-file').click());
+el('import-file').addEventListener('change', async (event) => {
+  const file = event.target.files && event.target.files[0];
+  event.target.value = '';
+  if (!file) return;
+  try {
+    el('import-text').value = await file.text();
+    resetImportPreview();
+  } catch (err) {
+    notify('文件读取失败，请换个文件再试', 'error');
+  }
+});
+el('import-text').addEventListener('input', resetImportPreview);
+el('import-confirm').addEventListener('click', confirmImport);
+el('import-cancel').addEventListener('click', closeImportForm);
 el('filter-apply').addEventListener('click', () => {
   clearNotice();
   loadDeps().catch((err) => notify(err.message, 'error'));

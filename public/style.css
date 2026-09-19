@@ -341,3 +341,69 @@ label.full input {
   display: flex;
   gap: 10px;
 }
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.import-source {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+#import-text {
+  width: 100%;
+  max-width: 720px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: inherit;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+#import-text:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.import-result {
+  max-width: 720px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.import-summary {
+  margin: 0;
+  font-weight: 600;
+}
+
+.import-group h4 {
+  margin: 10px 0 4px;
+  font-size: 12.5px;
+}
+
+.import-group ul {
+  margin: 0;
+  padding-left: 18px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.import-group.bad h4 {
+  color: var(--danger);
+}
+
+.import-group.dup h4 {
+  color: #8a5a00;
+}
+
+.import-group.ok h4 {
+  color: var(--ok);
+}

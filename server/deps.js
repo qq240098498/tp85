@@ -181,4 +181,8 @@ module.exports = {
   deleteDep,
   validateName,
   validateVersion,
+  validateLicense,
+  validateOwner,
+  validateStatus,
+  validateNote,
 };

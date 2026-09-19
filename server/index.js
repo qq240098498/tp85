@@ -60,6 +60,23 @@ app.post('/api/deps', (req, res) => {
   }
 });
 
+// 清单导入：先预演（只分析不落盘），页面确认后再正式导入
+app.post('/api/deps/import/preview', (req, res) => {
+  try {
+    res.json(api.previewImport(req.body && req.body.text));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+app.post('/api/deps/import', (req, res) => {
+  try {
+    res.status(201).json(api.runImport(req.body && req.body.text));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
 app.get('/api/deps/:id', (req, res) => {
   try {
     res.json(api.getDep(req.params.id));

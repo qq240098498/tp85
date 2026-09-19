@@ -65,6 +65,7 @@
           <button type="button" id="filter-apply">筛选</button>
           <button type="button" id="filter-reset" class="ghost">重置</button>
           <button type="button" id="dep-refresh" class="ghost">刷新</button>
+          <button type="button" id="dep-import" class="ghost">导入清单</button>
           <button type="button" id="dep-new">新建登记</button>
         </div>
       </div>
@@ -87,6 +88,22 @@
         </table>
       </div>
       <p class="empty-tip hidden" id="dep-empty">当前筛选条件下没有依赖登记</p>
+
+      <form class="dep-form hidden" id="import-form" autocomplete="off">
+        <h3>导入清单</h3>
+        <div class="import-source">
+          <input type="file" id="import-file" accept=".json,.csv,.txt" class="hidden">
+          <button type="button" id="import-pick" class="ghost">选择文件</button>
+          <span class="panel-tip">支持 JSON 数组或带表头的 CSV，也可以把内容直接粘贴到下面；正式写入前会先预演一遍</span>
+        </div>
+        <textarea id="import-text" rows="8" spellcheck="false" placeholder='JSON 写法：[{"project":"订单服务","name":"spring-boot","version":"2.7.18","license":"Apache-2.0","owner":"陈晓","status":"在用","note":"基础框架"}]&#10;CSV 写法：第一行表头「项目,依赖名称,版本,许可,责任人,状态,备注」，往下每行一条'></textarea>
+        <div class="form-actions">
+          <button type="submit">预演</button>
+          <button type="button" id="import-confirm" disabled>确认导入</button>
+          <button type="button" id="import-cancel" class="ghost">取消</button>
+        </div>
+        <div class="import-result hidden" id="import-result"></div>
+      </form>
 
       <form class="dep-form hidden" id="dep-form" autocomplete="off">
         <h3 id="dep-form-title">新建登记</h3>
